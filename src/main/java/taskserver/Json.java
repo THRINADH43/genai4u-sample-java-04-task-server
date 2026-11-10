@@ -3,7 +3,7 @@ package taskserver;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
-/** Tiny helpers so the project needs no JSON library. Only flat string fields are supported. */
+/** Tiny helpers so the project needs no JSON library. Only flat string and number fields. */
 final class Json {
     private Json() {}
 
@@ -12,7 +12,10 @@ final class Json {
     }
 
     static String field(String json, String name) {
-        Matcher m = Pattern.compile("\"" + Pattern.quote(name) + "\"\\s*:\\s*\"((?:[^\"\\\\]|\\\\.)*)\"").matcher(json);
-        return m.find() ? m.group(1).replace("\\\"", "\"").replace("\\\\", "\\") : null;
+        Matcher m = Pattern.compile("\"" + Pattern.quote(name)
+                + "\"\\s*:\\s*(?:\"((?:[^\"\\\\]|\\\\.)*)\"|(-?\\d+(?:\\.\\d+)?))").matcher(json);
+        if (!m.find()) return null;
+        if (m.group(2) != null) return m.group(2);
+        return m.group(1).replace("\\\"", "\"").replace("\\\\", "\\");
     }
 }

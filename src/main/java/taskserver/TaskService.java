@@ -23,7 +23,8 @@ public class TaskService {
     public Task submit(String type, String input) {
         TaskHandler handler = TaskHandlers.forType(type)
                 .orElseThrow(() -> new IllegalArgumentException("unknown task type: " + type));
-        Task task = new Task(UUID.randomUUID().toString(), type, input == null ? "" : input);
+        TaskHandlers.validate(type, input);
+        Task task = new Task(UUID.randomUUID().toString(), type, input.trim());
         tasks.put(task.id(), task);
         pool.submit(() -> execute(task, handler));
         LOG.info(() -> "queued task " + task.id() + " (" + type + ")");

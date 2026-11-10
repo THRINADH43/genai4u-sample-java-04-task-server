@@ -4,13 +4,17 @@ import com.sun.net.httpserver.HttpExchange;
 import com.sun.net.httpserver.HttpServer;
 import java.io.IOException;
 import java.io.OutputStream;
+import java.net.URLDecoder;
 import java.net.InetSocketAddress;
 import java.nio.charset.StandardCharsets;
+import java.util.HashMap;
+import java.util.Map;
 import java.util.concurrent.Executors;
 import java.util.logging.Logger;
 
 /**
- * POST /tasks  {"type":"uppercase","input":"hello"}  -> 201 {"id":...}
+ * POST /tasks  type=count_words&text=hello+world  (form fields)  -> 201 {"id":...}
+ *              {"type":"sleep","seconds":3}       (JSON also works)
  * GET  /tasks/{id}                                  -> 200 task, 404 if unknown
  */
 public class TaskServer {
@@ -45,13 +49,15 @@ public class TaskServer {
             String method = ex.getRequestMethod();
             if (method.equals("POST") && path.equals("/tasks")) {
                 String body = new String(ex.getRequestBody().readAllBytes(), StandardCharsets.UTF_8);
-                String type = Json.field(body, "type");
+                Map<String, String> fields = parseFields(body);
+                String type = fields.get("type");
                 if (type == null) {
                     send(ex, 400, "{\"error\":\"type is required\"}");
                     return;
                 }
                 try {
-                    Task t = service.submit(type, Json.field(body, "input"));
+                    String field = TaskHandlers.INPUT_FIELD.getOrDefault(type, "text");
+                    Task t = service.submit(type, fields.get(field));
                     send(ex, 201, t.toJson());
                 } catch (IllegalArgumentException e) {
                     send(ex, 400, "{\"error\":\"" + Json.escape(e.getMessage()) + "\"}");
@@ -67,6 +73,27 @@ public class TaskServer {
         } finally {
             ex.close();
         }
+    }
+
+    /** Form fields (type=sleep&seconds=3) or a flat JSON object. */
+    static Map<String, String> parseFields(String body) {
+        Map<String, String> fields = new HashMap<>();
+        String trimmed = body.trim();
+        if (trimmed.startsWith("{")) {
+            for (String name : new String[] {"type", "text", "seconds"}) {
+                String value = Json.field(trimmed, name);
+                if (value != null) fields.put(name, value);
+            }
+            return fields;
+        }
+        for (String pair : trimmed.split("&")) {
+            int eq = pair.indexOf('=');
+            if (eq > 0) {
+                fields.put(URLDecoder.decode(pair.substring(0, eq), StandardCharsets.UTF_8),
+                        URLDecoder.decode(pair.substring(eq + 1), StandardCharsets.UTF_8));
+            }
+        }
+        return fields;
     }
 
     private void sendQuietly(HttpExchange ex, int status, String json) {
